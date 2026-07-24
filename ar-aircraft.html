@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AR Aircraft Viewer</title>
+  <!-- Google's model-viewer component: handles 3D preview + AR launch -->
+  <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
+  <style>
+    :root {
+      --ink: #1c2733;
+      --sky-top: #cfe3f2;
+      --sky-bottom: #eef4f9;
+      --accent: #0e5da8;
+      --tarmac: #3a4450;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      color: var(--ink);
+      background: linear-gradient(var(--sky-top), var(--sky-bottom));
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      padding: 18px 20px 10px;
+      text-align: center;
+    }
+    header h1 {
+      font-size: 1.35rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    header p {
+      font-size: 0.85rem;
+      color: #4a5a6a;
+      margin-top: 4px;
+    }
+    model-viewer {
+      width: 100%;
+      flex: 1;
+      min-height: 62vh;
+      background: transparent;
+      --poster-color: transparent;
+    }
+    /* Custom AR button shown inside model-viewer */
+    .ar-btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 999px;
+      padding: 12px 22px;
+      font-size: 1rem;
+      font-weight: 600;
+      box-shadow: 0 4px 14px rgba(14, 93, 168, 0.35);
+      cursor: pointer;
+    }
+    .hangar {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      padding: 14px 16px 22px;
+      background: var(--tarmac);
+    }
+    .hangar button {
+      background: #ffffff14;
+      color: #e8eef4;
+      border: 1px solid #ffffff33;
+      border-radius: 10px;
+      padding: 10px 16px;
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+    .hangar button.active {
+      background: #fff;
+      color: var(--tarmac);
+      font-weight: 600;
+    }
+    .hint {
+      text-align: center;
+      font-size: 0.8rem;
+      color: #5a6a7a;
+      padding: 8px 16px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>AR Aircraft</h1>
+    <p>Pick an aircraft, then tap “Place on ground” to see it in your space.</p>
+  </header>
+
+  <!--
+    src: the 3D model shown here and in AR.
+    Replace the demo model with your own helicopter.glb / plane.glb
+    placed in the same folder as this file (see hangar buttons below).
+    ar-modes: scene-viewer is the native Android AR experience.
+    ar-placement="floor": the model sits on detected ground.
+  -->
+  <model-viewer id="viewer"
+    src="https://modelviewer.dev/shared-assets/models/Astronaut.glb"
+    alt="Aircraft 3D model"
+    ar
+    ar-modes="scene-viewer webxr quick-look"
+    ar-placement="floor"
+    camera-controls
+    shadow-intensity="1"
+    auto-rotate>
+    <button slot="ar-button" class="ar-btn">Place on ground</button>
+  </model-viewer>
+
+  <p class="hint">Tip: works in Chrome on an ARCore-compatible Android phone, over HTTPS.</p>
+
+  <div class="hangar">
+    <!-- Swap the data-src values to your own .glb files, e.g. "helicopter.glb" -->
+    <button class="active" data-src="https://modelviewer.dev/shared-assets/models/Astronaut.glb">Demo model</button>
+    <button data-src="helicopter.glb">Helicopter</button>
+    <button data-src="plane.glb">Plane</button>
+  </div>
+
+  <script>
+    const viewer = document.getElementById("viewer");
+    const buttons = document.querySelectorAll(".hangar button");
+    buttons.forEach(btn => {
+      btn.addEventListener("click", () => {
+        buttons.forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        viewer.src = btn.dataset.src;
+      });
+    });
+  </script>
+</body>
+</html>
