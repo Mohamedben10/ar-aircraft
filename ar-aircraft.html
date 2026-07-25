@@ -212,7 +212,7 @@ function setObjectQuaternion(quaternion, alpha, beta, gamma, orient){
 }
 
 function friendMode(){
-  subtitle.textContent = "Rejoins la zone : les véhicules apparaîtront dans la caméra.";
+  subtitle.textContent = "Suis les flèches pour rejoindre la zone.";
   try {
     items = JSON.parse(decodeURIComponent(atob(sceneParam)));
   } catch(e){
@@ -220,15 +220,66 @@ function friendMode(){
     return;
   }
   keys = Object.keys(items);
-  const list = keys.map(k => `<div class="veh-row"><span class="label">${items[k].label}</span></div>`).join("");
-  panel.innerHTML = `<div class="card">${list}
-    <button class="btn-ok" id="openArBtn" style="margin-top:10px;width:100%;">Ouvrir la vue caméra</button>
-  </div>`;
+  const card = document.createElement("div");
+  card.className = "card";
+  card.innerHTML = keys.map(k => `
+    <div class="veh-row" style="flex-direction:column;align-items:stretch;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span class="label">${items[k].label}</span>
+        <span class="status" id="dist-${k}">…</span>
+      </div>
+      <div style="text-align:center;padding:6px 0;">
+        <div class="arrow" id="arrow-${k}" style="font-size:2.4rem;display:inline-block;color:#0e5da8;transition:transform .2s ease;">↑</div>
+      </div>
+    </div>`).join("");
+  panel.innerHTML = "";
+  panel.appendChild(card);
+
+  const openCard = document.createElement("div");
+  openCard.className = "card";
+  openCard.innerHTML = `<button class="btn-ok" id="openArBtn" style="width:100%;">Ouvrir la vue caméra (quand tu es proche)</button>`;
+  panel.appendChild(openCard);
   document.getElementById("openArBtn").onclick = () => {
     document.getElementById("arView").style.display = "block";
   };
-
   document.getElementById("startArBtn").onclick = startAR;
+
+  startCompassGuide();
+}
+
+function startCompassGuide(){
+  let heading = 0;
+  const orientHandler = e => {
+    if (e.webkitCompassHeading !== undefined) heading = e.webkitCompassHeading;
+    else if (e.alpha !== null) heading = 360 - e.alpha;
+  };
+  if (typeof DeviceOrientationEvent !== "undefined" && DeviceOrientationEvent.requestPermission){
+    DeviceOrientationEvent.requestPermission().then(state => {
+      if (state === "granted"){
+        window.addEventListener("deviceorientation", orientHandler);
+      }
+    }).catch(()=>{});
+  } else {
+    window.addEventListener("deviceorientationabsolute", orientHandler, true);
+    window.addEventListener("deviceorientation", orientHandler, true);
+  }
+
+  navigator.geolocation.watchPosition(pos => {
+    const { latitude: lat, longitude: lng } = pos.coords;
+    keys.forEach(k => {
+      const v = items[k];
+      const d = Math.round(haversine(lat, lng, v.lat, v.lng));
+      const toRad = x => x*Math.PI/180, toDeg = x => x*180/Math.PI;
+      const y = Math.sin(toRad(v.lng-lng)) * Math.cos(toRad(v.lat));
+      const x = Math.cos(toRad(lat))*Math.sin(toRad(v.lat)) - Math.sin(toRad(lat))*Math.cos(toRad(v.lat))*Math.cos(toRad(v.lng-lng));
+      const bearing = (toDeg(Math.atan2(y,x))+360)%360;
+      const rel = (bearing - heading + 360) % 360;
+      const arrowEl = document.getElementById(`arrow-${k}`);
+      const distEl = document.getElementById(`dist-${k}`);
+      if (arrowEl) arrowEl.style.transform = `rotate(${rel}deg)`;
+      if (distEl) distEl.textContent = d < 15 ? "✅ Arrivé !" : `${d} m`;
+    });
+  }, err => console.error(err), { enableHighAccuracy:true, maximumAge:2000 });
 }
 
 function closeAR(){
