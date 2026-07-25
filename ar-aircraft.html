@@ -80,6 +80,7 @@
   <video id="camFeed" autoplay playsinline muted></video>
   <canvas id="arCanvas"></canvas>
   <div id="hud"></div>
+  <div id="debugLog" style="position:absolute;bottom:0;left:0;right:0;max-height:40vh;overflow-y:auto;background:#000c;color:#7CFFB2;font-family:monospace;font-size:.72rem;padding:8px;z-index:32;"></div>
   <div class="start-screen" id="startScreen">
     <h2>Vue immersive</h2>
     <p>Autorise la caméra, la position et l'orientation du téléphone pour voir les véhicules apparaître dans le monde réel — petits au loin, grands en approchant.</p>
@@ -155,9 +156,11 @@ function creatorMode(){
       { enableHighAccuracy: true });
     };
     row.querySelector('[data-action="coords"]').onclick = () => {
-      const lat = parseFloat(document.getElementById(`lat-${v.key}`).value);
-      const lng = parseFloat(document.getElementById(`lng-${v.key}`).value);
-      if (isNaN(lat) || isNaN(lng)) { alert("Coordonnées invalides. Utilise un format comme 48.8566, 2.3522"); return; }
+      const latRaw = document.getElementById(`lat-${v.key}`).value.trim().replace(",", ".");
+      const lngRaw = document.getElementById(`lng-${v.key}`).value.trim().replace(",", ".");
+      const lat = parseFloat(latRaw);
+      const lng = parseFloat(lngRaw);
+      if (isNaN(lat) || isNaN(lng)) { alert("Coordonnées invalides. Utilise un format comme 48.8566 et 2.3522 (point ou virgule accepté)"); return; }
       placed[v.key] = { lat, lng, src: v.src, label: v.label, scale: v.scale || 1 };
       localStorage.setItem("ar_scene_items", JSON.stringify(placed));
       creatorMode();
@@ -232,21 +235,32 @@ function closeAR(){
   document.getElementById("arView").style.display = "none";
 }
 
+function log(msg){
+  const el = document.getElementById("debugLog");
+  if (el) el.innerHTML += `<div>${msg}</div>`;
+  el.scrollTop = el.scrollHeight;
+}
+
 async function startAR(){
   document.getElementById("startScreen").style.display = "none";
+  log("Démarrage…");
+
+  if (typeof THREE === "undefined") { log("❌ Three.js ne s'est pas chargé (bloqué par le réseau ?)"); return; }
+  if (typeof THREE.GLTFLoader === "undefined") { log("❌ GLTFLoader ne s'est pas chargé"); return; }
 
   // Camera feed
   try{
     const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio:false });
     document.getElementById("camFeed").srcObject = stream;
+    log("✅ Caméra OK");
   }catch(e){
-    alert("Impossible d'accéder à la caméra : " + e.message);
+    log("❌ Caméra refusée : " + e.message);
     return;
   }
 
   // Orientation permission (iOS mainly; harmless on Android)
   if (typeof DeviceOrientationEvent !== "undefined" && DeviceOrientationEvent.requestPermission){
-    try{ await DeviceOrientationEvent.requestPermission(); }catch(e){}
+    try{ await DeviceOrientationEvent.requestPermission(); log("✅ Permission orientation OK"); }catch(e){ log("⚠️ Orientation refusée : " + e.message); }
   }
 
   // Three.js setup
@@ -258,27 +272,32 @@ async function startAR(){
   camera3 = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 20000);
   scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.3));
   scene.add(new THREE.DirectionalLight(0xffffff, 0.6));
+  log("✅ Scène 3D initialisée");
 
   // Get first GPS fix as local origin, then load models at their fixed offsets
   navigator.geolocation.getCurrentPosition(pos => {
     originLat = pos.coords.latitude;
     originLng = pos.coords.longitude;
+    log(`✅ Position obtenue : ${originLat.toFixed(5)}, ${originLng.toFixed(5)} (précision ${Math.round(pos.coords.accuracy)} m)`);
     const loader = new THREE.GLTFLoader();
     keys.forEach(k => {
       const v = items[k];
+      const off = metersOffset(originLat, originLng, v.lat, v.lng);
+      const dist = Math.round(Math.sqrt(off.x*off.x + off.north*off.north));
+      log(`⏳ Chargement de ${v.label} (${v.src}) — à ${dist} m d'ici…`);
       loader.load(v.src, gltf => {
         const obj = gltf.scene;
-        const off = metersOffset(originLat, originLng, v.lat, v.lng);
         obj.position.set(off.x, 0, -off.north); // north = -Z
         const s = v.scale || 1;
         obj.scale.setScalar(s);
         obj.userData.key = k;
         scene.add(obj);
-      }, undefined, err => console.error("Erreur chargement modèle", v.src, err));
+        log(`✅ ${v.label} chargé et placé`);
+      }, undefined, err => log(`❌ Échec chargement ${v.src} — vérifie que ce fichier existe bien à la racine du site`));
     });
     startTracking();
     animate();
-  }, err => alert("Localisation indisponible : " + err.message), { enableHighAccuracy:true });
+  }, err => log("❌ Localisation indisponible : " + err.message), { enableHighAccuracy:true });
 }
 
 function startTracking(){
