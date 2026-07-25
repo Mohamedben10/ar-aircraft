@@ -1,134 +1,333 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fr">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AR Aircraft Viewer</title>
-  <!-- Google's model-viewer component: handles 3D preview + AR launch -->
-  <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
-  <style>
-    :root {
-      --ink: #1c2733;
-      --sky-top: #cfe3f2;
-      --sky-bottom: #eef4f9;
-      --accent: #0e5da8;
-      --tarmac: #3a4450;
-    }
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: "Segoe UI", system-ui, sans-serif;
-      color: var(--ink);
-      background: linear-gradient(var(--sky-top), var(--sky-bottom));
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
-    header {
-      padding: 18px 20px 10px;
-      text-align: center;
-    }
-    header h1 {
-      font-size: 1.35rem;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-    }
-    header p {
-      font-size: 0.85rem;
-      color: #4a5a6a;
-      margin-top: 4px;
-    }
-    model-viewer {
-      width: 100%;
-      flex: 1;
-      min-height: 62vh;
-      background: transparent;
-      --poster-color: transparent;
-    }
-    /* Custom AR button shown inside model-viewer */
-    .ar-btn {
-      background: var(--accent);
-      color: #fff;
-      border: none;
-      border-radius: 999px;
-      padding: 12px 22px;
-      font-size: 1rem;
-      font-weight: 600;
-      box-shadow: 0 4px 14px rgba(14, 93, 168, 0.35);
-      cursor: pointer;
-    }
-    .hangar {
-      display: flex;
-      gap: 10px;
-      justify-content: center;
-      padding: 14px 16px 22px;
-      background: var(--tarmac);
-    }
-    .hangar button {
-      background: #ffffff14;
-      color: #e8eef4;
-      border: 1px solid #ffffff33;
-      border-radius: 10px;
-      padding: 10px 16px;
-      font-size: 0.95rem;
-      cursor: pointer;
-    }
-    .hangar button.active {
-      background: #fff;
-      color: var(--tarmac);
-      font-weight: 600;
-    }
-    .hint {
-      text-align: center;
-      font-size: 0.8rem;
-      color: #5a6a7a;
-      padding: 8px 16px;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AR Scène Véhicules</title>
+<script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.150.1/examples/js/loaders/GLTFLoader.js"></script>
+<style>
+  :root{
+    --ink:#1c2733; --sky-top:#cfe3f2; --sky-bottom:#eef4f9;
+    --accent:#0e5da8; --tarmac:#3a4450; --ok:#2e8b57; --warn:#b8860b;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{
+    font-family:"Segoe UI",system-ui,sans-serif;color:var(--ink);
+    background:linear-gradient(var(--sky-top),var(--sky-bottom));
+    min-height:100vh;display:flex;flex-direction:column;
+  }
+  header{padding:18px 20px 8px;text-align:center;}
+  header h1{font-size:1.25rem;letter-spacing:.03em;text-transform:uppercase;}
+  header p{font-size:.82rem;color:#4a5a6a;margin-top:4px;}
+  .panel{padding:16px;max-width:480px;margin:0 auto;width:100%;flex:1;}
+  .card{
+    background:#fff;border-radius:14px;padding:16px;margin-bottom:12px;
+    box-shadow:0 2px 10px rgba(0,0,0,.06);
+  }
+  .veh-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid #eef1f4;}
+  .veh-row:last-child{border-bottom:none;}
+  .veh-row span.label{font-weight:600;}
+  .veh-row span.status{font-size:.78rem;color:#6a7a8a;}
+  button{
+    font-family:inherit;border:none;border-radius:10px;padding:10px 16px;
+    font-size:.92rem;font-weight:600;cursor:pointer;
+  }
+  .btn-primary{background:var(--accent);color:#fff;}
+  .btn-primary:disabled{background:#a9c3d8;cursor:not-allowed;}
+  .btn-ghost{background:#eef2f6;color:var(--ink);}
+  .btn-ok{background:var(--ok);color:#fff;}
+  .link-box{display:flex;gap:8px;margin-top:10px;}
+  .link-box input{flex:1;padding:10px;border-radius:8px;border:1px solid #dbe3ea;font-size:.85rem;}
+  .hint{text-align:center;font-size:.78rem;color:#5a6a7a;padding:6px 16px 20px;}
+
+  /* Live AR overlay */
+  #arView{position:fixed;inset:0;background:#000;display:none;z-index:30;}
+  #camFeed{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}
+  #arCanvas{position:absolute;inset:0;width:100%;height:100%;}
+  #hud{
+    position:absolute;top:0;left:0;right:0;padding:14px 12px;
+    background:linear-gradient(rgba(0,0,0,.55),transparent);
+    color:#fff;font-size:.82rem;pointer-events:none;
+  }
+  #hud .item{display:flex;justify-content:space-between;padding:2px 0;}
+  #hud .item.found{color:#7CFFB2;font-weight:700;}
+  .close-btn{
+    position:absolute;top:12px;right:12px;z-index:31;
+    background:#0007;color:#fff;border-radius:50%;width:38px;height:38px;
+    font-size:1.1rem;line-height:38px;text-align:center;
+  }
+  .start-screen{
+    position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:14px;color:#fff;text-align:center;padding:24px;
+    background:linear-gradient(#0e2233,#000);
+  }
+  .start-screen p{font-size:.85rem;opacity:.85;max-width:320px;}
+</style>
 </head>
 <body>
-  <header>
-    <h1>AR Aircraft</h1>
-    <p>Pick an aircraft, then tap “Place on ground” to see it in your space.</p>
-  </header>
 
-  <!--
-    src: the 3D model shown here and in AR.
-    Replace the demo model with your own helicopter.glb / plane.glb
-    placed in the same folder as this file (see hangar buttons below).
-    ar-modes: scene-viewer is the native Android AR experience.
-    ar-placement="floor": the model sits on detected ground.
-  -->
-  <model-viewer id="viewer"
-    src="https://modelviewer.dev/shared-assets/models/Astronaut.glb"
-    alt="Aircraft 3D model"
-    ar
-    ar-modes="scene-viewer webxr quick-look"
-    ar-placement="floor"
-    camera-controls
-    shadow-intensity="1"
-    auto-rotate>
-    <button slot="ar-button" class="ar-btn">Place on ground</button>
-  </model-viewer>
+<header>
+  <h1>AR Scène Véhicules</h1>
+  <p id="subtitle">Chargement…</p>
+</header>
 
-  <p class="hint">Tip: works in Chrome on an ARCore-compatible Android phone, over HTTPS.</p>
+<div class="panel" id="panel"></div>
 
-  <div class="hangar">
-    <!-- Swap the data-src values to your own .glb files, e.g. "helicopter.glb" -->
-    <button class="active" data-src="https://modelviewer.dev/shared-assets/models/Astronaut.glb">Demo model</button>
-    <button data-src="helicopter.glb">Helicopter</button>
-    <button data-src="plane.glb">Plane</button>
+<div id="arView">
+  <div class="close-btn" onclick="closeAR()">✕</div>
+  <video id="camFeed" autoplay playsinline muted></video>
+  <canvas id="arCanvas"></canvas>
+  <div id="hud"></div>
+  <div class="start-screen" id="startScreen">
+    <h2>Vue immersive</h2>
+    <p>Autorise la caméra, la position et l'orientation du téléphone pour voir les véhicules apparaître dans le monde réel — petits au loin, grands en approchant.</p>
+    <button class="btn-ok" id="startArBtn">Démarrer la vue caméra</button>
   </div>
+</div>
 
-  <script>
-    const viewer = document.getElementById("viewer");
-    const buttons = document.querySelectorAll(".hangar button");
-    buttons.forEach(btn => {
-      btn.addEventListener("click", () => {
-        buttons.forEach(b => b.classList.remove("active"));
-        btn.classList.add("active");
-        viewer.src = btn.dataset.src;
-      });
+<p class="hint">Astuce : utilise ça dehors, à l'extérieur, pour un signal GPS fiable.</p>
+
+<script>
+// ---------- Config: your vehicles (edit filenames / scale as needed) ----------
+const VEHICLE_TYPES = [
+  { key: "camion1", label: "Camion 1", src: "truck.glb", scale: 1 },
+  { key: "camion2", label: "Camion 2", src: "truck.glb", scale: 1 },
+  { key: "helico",  label: "Hélicoptère", src: "helicopter.glb", scale: 1 }
+];
+
+const subtitle = document.getElementById("subtitle");
+const panel = document.getElementById("panel");
+const params = new URLSearchParams(location.search);
+const sceneParam = params.get("scene");
+
+function metersOffset(lat1, lng1, lat2, lng2){
+  const latRad = lat1 * Math.PI/180;
+  const x = (lng2-lng1) * 111320 * Math.cos(latRad); // east(+)/west(-)
+  const north = (lat2-lat1) * 110540;                 // north(+)/south(-)
+  return { x, north };
+}
+function haversine(lat1, lon1, lat2, lon2){
+  const R = 6371000, toRad = d => d*Math.PI/180;
+  const dLat = toRad(lat2-lat1), dLon = toRad(lon2-lon1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(a));
+}
+
+// ================= CREATOR MODE =================
+function creatorMode(){
+  subtitle.textContent = "Place tes véhicules ici, puis génère le lien à partager.";
+  const placed = JSON.parse(localStorage.getItem("ar_scene_items") || "{}");
+
+  const card = document.createElement("div");
+  card.className = "card";
+  VEHICLE_TYPES.forEach(v => {
+    const row = document.createElement("div");
+    row.className = "veh-row";
+    const has = placed[v.key];
+    row.innerHTML = `
+      <div style="width:100%;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div class="label">${v.label}</div>
+          <button class="${has ? "btn-ghost" : "btn-primary"}" data-key="${v.key}" data-action="here">
+            ${has ? "Replacer ici" : "Poser ici"}
+          </button>
+        </div>
+        <div class="status" style="margin-bottom:6px;">${has ? `✅ Placé : ${has.lat.toFixed(5)}, ${has.lng.toFixed(5)}` : "Pas encore placé"}</div>
+        <div style="display:flex;gap:6px;">
+          <input type="text" placeholder="Latitude" id="lat-${v.key}" value="${has ? has.lat : ""}"
+            style="flex:1;padding:8px;border-radius:8px;border:1px solid #dbe3ea;font-size:.82rem;">
+          <input type="text" placeholder="Longitude" id="lng-${v.key}" value="${has ? has.lng : ""}"
+            style="flex:1;padding:8px;border-radius:8px;border:1px solid #dbe3ea;font-size:.82rem;">
+          <button class="btn-ok" data-key="${v.key}" data-action="coords">OK</button>
+        </div>
+      </div>`;
+    row.querySelector('[data-action="here"]').onclick = () => {
+      navigator.geolocation.getCurrentPosition(pos => {
+        placed[v.key] = {
+          lat: pos.coords.latitude, lng: pos.coords.longitude,
+          src: v.src, label: v.label, scale: v.scale || 1
+        };
+        localStorage.setItem("ar_scene_items", JSON.stringify(placed));
+        creatorMode();
+      }, err => alert("Localisation refusée ou indisponible : " + err.message),
+      { enableHighAccuracy: true });
+    };
+    row.querySelector('[data-action="coords"]').onclick = () => {
+      const lat = parseFloat(document.getElementById(`lat-${v.key}`).value);
+      const lng = parseFloat(document.getElementById(`lng-${v.key}`).value);
+      if (isNaN(lat) || isNaN(lng)) { alert("Coordonnées invalides. Utilise un format comme 48.8566, 2.3522"); return; }
+      placed[v.key] = { lat, lng, src: v.src, label: v.label, scale: v.scale || 1 };
+      localStorage.setItem("ar_scene_items", JSON.stringify(placed));
+      creatorMode();
+    };
+    card.appendChild(row);
+  });
+  panel.innerHTML = "";
+  panel.appendChild(card);
+
+  const genCard = document.createElement("div");
+  genCard.className = "card";
+  const anyPlaced = Object.keys(placed).length > 0;
+  genCard.innerHTML = `
+    <button class="btn-ok" id="genBtn" ${anyPlaced ? "" : "disabled"}>Générer le lien à partager</button>
+    <div class="link-box" id="linkBox" style="display:none;">
+      <input id="linkOut" readonly>
+      <button class="btn-ghost" id="copyBtn">Copier</button>
+    </div>`;
+  panel.appendChild(genCard);
+
+  document.getElementById("genBtn").onclick = () => {
+    const data = btoa(encodeURIComponent(JSON.stringify(placed)));
+    const url = `${location.origin}${location.pathname}?scene=${data}`;
+    document.getElementById("linkBox").style.display = "flex";
+    document.getElementById("linkOut").value = url;
+  };
+  panel.addEventListener("click", (e) => {
+    if(e.target.id === "copyBtn"){
+      const inp = document.getElementById("linkOut");
+      inp.select(); document.execCommand("copy");
+      e.target.textContent = "Copié !";
+    }
+  });
+}
+
+// ================= FRIEND MODE (live camera AR) =================
+let scene, camera3, renderer, originLat, originLng, items = {}, keys = [];
+let lastHeading = 0, camAltitude = 1.6;
+
+function setObjectQuaternion(quaternion, alpha, beta, gamma, orient){
+  const zee = new THREE.Vector3(0,0,1);
+  const euler = new THREE.Euler();
+  const q0 = new THREE.Quaternion();
+  const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+  euler.set(beta, alpha, -gamma, 'YXZ');
+  quaternion.setFromEuler(euler);
+  quaternion.multiply(q1);
+  quaternion.multiply(q0.setFromAxisAngle(zee, -orient));
+}
+
+function friendMode(){
+  subtitle.textContent = "Rejoins la zone : les véhicules apparaîtront dans la caméra.";
+  try {
+    items = JSON.parse(decodeURIComponent(atob(sceneParam)));
+  } catch(e){
+    panel.innerHTML = "<div class='card'>Lien invalide.</div>";
+    return;
+  }
+  keys = Object.keys(items);
+  const list = keys.map(k => `<div class="veh-row"><span class="label">${items[k].label}</span></div>`).join("");
+  panel.innerHTML = `<div class="card">${list}
+    <button class="btn-ok" id="openArBtn" style="margin-top:10px;width:100%;">Ouvrir la vue caméra</button>
+  </div>`;
+  document.getElementById("openArBtn").onclick = () => {
+    document.getElementById("arView").style.display = "block";
+  };
+
+  document.getElementById("startArBtn").onclick = startAR;
+}
+
+function closeAR(){
+  document.getElementById("arView").style.display = "none";
+}
+
+async function startAR(){
+  document.getElementById("startScreen").style.display = "none";
+
+  // Camera feed
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio:false });
+    document.getElementById("camFeed").srcObject = stream;
+  }catch(e){
+    alert("Impossible d'accéder à la caméra : " + e.message);
+    return;
+  }
+
+  // Orientation permission (iOS mainly; harmless on Android)
+  if (typeof DeviceOrientationEvent !== "undefined" && DeviceOrientationEvent.requestPermission){
+    try{ await DeviceOrientationEvent.requestPermission(); }catch(e){}
+  }
+
+  // Three.js setup
+  const canvas = document.getElementById("arCanvas");
+  renderer = new THREE.WebGLRenderer({ canvas, alpha:true, antialias:true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(window.devicePixelRatio);
+  scene = new THREE.Scene();
+  camera3 = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 20000);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.3));
+  scene.add(new THREE.DirectionalLight(0xffffff, 0.6));
+
+  // Get first GPS fix as local origin, then load models at their fixed offsets
+  navigator.geolocation.getCurrentPosition(pos => {
+    originLat = pos.coords.latitude;
+    originLng = pos.coords.longitude;
+    const loader = new THREE.GLTFLoader();
+    keys.forEach(k => {
+      const v = items[k];
+      loader.load(v.src, gltf => {
+        const obj = gltf.scene;
+        const off = metersOffset(originLat, originLng, v.lat, v.lng);
+        obj.position.set(off.x, 0, -off.north); // north = -Z
+        const s = v.scale || 1;
+        obj.scale.setScalar(s);
+        obj.userData.key = k;
+        scene.add(obj);
+      }, undefined, err => console.error("Erreur chargement modèle", v.src, err));
     });
-  </script>
+    startTracking();
+    animate();
+  }, err => alert("Localisation indisponible : " + err.message), { enableHighAccuracy:true });
+}
+
+function startTracking(){
+  // Position tracking
+  navigator.geolocation.watchPosition(pos => {
+    const off = metersOffset(originLat, originLng, pos.coords.latitude, pos.coords.longitude);
+    if (pos.coords.altitude) camAltitude = pos.coords.altitude - (pos.coords.altitude > 0 ? 0 : 0);
+    camera3.position.set(off.x, camAltitude, -off.north);
+
+    // HUD distances
+    const hud = document.getElementById("hud");
+    hud.innerHTML = keys.map(k => {
+      const v = items[k];
+      const d = Math.round(haversine(pos.coords.latitude, pos.coords.longitude, v.lat, v.lng));
+      const found = d < 15;
+      return `<div class="item ${found ? "found" : ""}">${v.label}<span>${found ? "Arrivé !" : d + " m"}</span></div>`;
+    }).join("");
+  }, err => console.error(err), { enableHighAccuracy:true, maximumAge:1000 });
+
+  // Orientation tracking (compass heading + tilt)
+  const orientHandler = e => {
+    let alpha = e.alpha, beta = e.beta, gamma = e.gamma;
+    if (e.webkitCompassHeading !== undefined) alpha = 360 - e.webkitCompassHeading;
+    if (alpha === null) return;
+    const screenOrient = (screen.orientation && screen.orientation.angle) ? screen.orientation.angle * Math.PI/180 : 0;
+    setObjectQuaternion(camera3.quaternion,
+      THREE.MathUtils.degToRad(alpha),
+      THREE.MathUtils.degToRad(beta || 0),
+      THREE.MathUtils.degToRad(gamma || 0),
+      screenOrient);
+  };
+  window.addEventListener("deviceorientationabsolute", orientHandler, true);
+  window.addEventListener("deviceorientation", orientHandler, true);
+
+  window.addEventListener("resize", () => {
+    camera3.aspect = window.innerWidth / window.innerHeight;
+    camera3.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+}
+
+function animate(){
+  requestAnimationFrame(animate);
+  if (renderer && scene && camera3) renderer.render(scene, camera3);
+}
+
+// ================= ROUTER =================
+if (sceneParam) friendMode();
+else creatorMode();
+</script>
 </body>
 </html>
