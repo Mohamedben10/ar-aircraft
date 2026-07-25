@@ -80,6 +80,9 @@
   <video id="camFeed" autoplay playsinline muted></video>
   <canvas id="arCanvas"></canvas>
   <div id="hud"></div>
+  <div id="realArPrompt" style="display:none;position:absolute;left:0;right:0;bottom:60px;text-align:center;z-index:15;">
+    <button class="btn-ok" id="realArBtn" style="padding:14px 24px;font-size:1rem;">📍 Ancrer au sol (AR réelle)</button>
+  </div>
   <div id="debugLog" style="position:absolute;bottom:0;left:0;right:0;max-height:40vh;overflow-y:auto;background:#000c;color:#7CFFB2;font-family:monospace;font-size:.72rem;padding:8px;z-index:32;"></div>
   <div class="start-screen" id="startScreen">
     <h2>Vue immersive</h2>
@@ -87,6 +90,11 @@
     <button class="btn-ok" id="startArBtn">Démarrer la vue caméra</button>
   </div>
 </div>
+
+<!-- Real ARCore session (Scene Viewer) for stable, environment-anchored placement once close -->
+<model-viewer id="mvReal" style="display:none;" ar ar-modes="scene-viewer webxr quick-look" ar-placement="floor">
+  <button slot="ar-button" style="display:none;"></button>
+</model-viewer>
 
 <p class="hint">Astuce : utilise ça dehors, à l'extérieur, pour un signal GPS fiable.</p>
 
@@ -367,14 +375,29 @@ function startTracking(){
 
     // HUD distances + show/hide models based on proximity
     const hud = document.getElementById("hud");
+    let nearestKey = null, nearestDist = Infinity;
     hud.innerHTML = keys.map(k => {
       const v = items[k];
       const d = Math.round(haversine(pos.coords.latitude, pos.coords.longitude, v.lat, v.lng));
       const found = d < 15;
       const appearAt = v.appearDistance || 300; // meters — edit per vehicle if needed
       if (loadedObjs[k]) loadedObjs[k].visible = d <= appearAt;
+      if (d < nearestDist) { nearestDist = d; nearestKey = k; }
       return `<div class="item ${found ? "found" : ""}">${v.label}<span>${found ? "Arrivé !" : d + " m"}</span></div>`;
     }).join("");
+
+    // Once very close, offer the true environment-anchored AR (real ARCore session)
+    const realPrompt = document.getElementById("realArPrompt");
+    if (nearestDist < 40) {
+      realPrompt.style.display = "block";
+      document.getElementById("realArBtn").onclick = () => {
+        const mv = document.getElementById("mvReal");
+        mv.src = items[nearestKey].src;
+        mv.querySelector('button[slot="ar-button"]').click();
+      };
+    } else {
+      realPrompt.style.display = "none";
+    }
   }, err => console.error(err), { enableHighAccuracy:true, maximumAge:1000 });
 
   // Orientation tracking (compass heading + tilt)
