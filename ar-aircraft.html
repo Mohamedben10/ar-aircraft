@@ -93,9 +93,9 @@
 <script>
 // ---------- Config: your vehicles (edit filenames / scale as needed) ----------
 const VEHICLE_TYPES = [
-  { key: "camion1", label: "Camion 1", src: "truck.glb", scale: 1 },
-  { key: "camion2", label: "Camion 2", src: "truck.glb", scale: 1 },
-  { key: "helico",  label: "Hélicoptère", src: "helicopter.glb", scale: 1 }
+  { key: "camion1", label: "Camion 1", src: "truck.glb", scale: 1, targetSize: 8 },
+  { key: "camion2", label: "Camion 2", src: "truck.glb", scale: 1, targetSize: 8 },
+  { key: "helico",  label: "Hélicoptère", src: "helicopter.glb", scale: 1, targetSize: 17 }
 ];
 
 const subtitle = document.getElementById("subtitle");
@@ -148,7 +148,7 @@ function creatorMode(){
       navigator.geolocation.getCurrentPosition(pos => {
         placed[v.key] = {
           lat: pos.coords.latitude, lng: pos.coords.longitude,
-          src: v.src, label: v.label, scale: v.scale || 1
+          src: v.src, label: v.label, scale: v.scale || 1, targetSize: v.targetSize || 15
         };
         localStorage.setItem("ar_scene_items", JSON.stringify(placed));
         creatorMode();
@@ -161,7 +161,7 @@ function creatorMode(){
       const lat = parseFloat(latRaw);
       const lng = parseFloat(lngRaw);
       if (isNaN(lat) || isNaN(lng)) { alert("Coordonnées invalides. Utilise un format comme 48.8566 et 2.3522 (point ou virgule accepté)"); return; }
-      placed[v.key] = { lat, lng, src: v.src, label: v.label, scale: v.scale || 1 };
+      placed[v.key] = { lat, lng, src: v.src, label: v.label, scale: v.scale || 1, targetSize: v.targetSize || 15 };
       localStorage.setItem("ar_scene_items", JSON.stringify(placed));
       creatorMode();
     };
@@ -197,7 +197,7 @@ function creatorMode(){
 }
 
 // ================= FRIEND MODE (live camera AR) =================
-let scene, camera3, renderer, originLat, originLng, items = {}, keys = [];
+let scene, camera3, renderer, originLat, originLng, items = {}, keys = [], loadedObjs = {};
 let lastHeading = 0, camAltitude = 1.6;
 
 function setObjectQuaternion(quaternion, alpha, beta, gamma, orient){
@@ -338,12 +338,19 @@ async function startAR(){
       log(`⏳ Chargement de ${v.label} (${v.src}) — à ${dist} m d'ici…`);
       loader.load(v.src, gltf => {
         const obj = gltf.scene;
+        const box = new THREE.Box3().setFromObject(obj);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const maxDim = Math.max(size.x, size.y, size.z) || 1;
+        const target = v.targetSize || 15;
+        const autoScale = target / maxDim;
         obj.position.set(off.x, 0, -off.north); // north = -Z
-        const s = v.scale || 1;
-        obj.scale.setScalar(s);
+        obj.scale.setScalar(autoScale * (v.scale || 1));
         obj.userData.key = k;
+        obj.visible = false; // hidden until the friend gets close enough
         scene.add(obj);
-        log(`✅ ${v.label} chargé et placé`);
+        loadedObjs[k] = obj;
+        log(`✅ ${v.label} chargé et placé (taille brute ${maxDim.toFixed(1)}, redimensionné x${autoScale.toFixed(4)})`);
       }, undefined, err => log(`❌ Échec chargement ${v.src} — vérifie que ce fichier existe bien à la racine du site`));
     });
     startTracking();
@@ -358,12 +365,14 @@ function startTracking(){
     if (pos.coords.altitude) camAltitude = pos.coords.altitude - (pos.coords.altitude > 0 ? 0 : 0);
     camera3.position.set(off.x, camAltitude, -off.north);
 
-    // HUD distances
+    // HUD distances + show/hide models based on proximity
     const hud = document.getElementById("hud");
     hud.innerHTML = keys.map(k => {
       const v = items[k];
       const d = Math.round(haversine(pos.coords.latitude, pos.coords.longitude, v.lat, v.lng));
       const found = d < 15;
+      const appearAt = v.appearDistance || 300; // meters — edit per vehicle if needed
+      if (loadedObjs[k]) loadedObjs[k].visible = d <= appearAt;
       return `<div class="item ${found ? "found" : ""}">${v.label}<span>${found ? "Arrivé !" : d + " m"}</span></div>`;
     }).join("");
   }, err => console.error(err), { enableHighAccuracy:true, maximumAge:1000 });
